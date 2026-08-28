@@ -1,0 +1,79 @@
+# Infrastructure for the market data pipeline: Redis (speed) + TimescaleDB (durability).
+#
+# LEARN: Docker Compose describes a set of containers in one file. `docker compose up -d`
+# starts them all in the background; `docker compose down` stops them. Running the databases
+# in containers means you never install Postgres or Redis on Windows directly, and a reviewer
+# can reproduce your exact setup with one command.
+#
+# The Python code does NOT run here yet. During development it runs on your machine in a venv
+# so edits take effect instantly. Containerizing the app is build-order step 11.
+
+services:
+  # ---------------------------------------------------------------------------
+  # Redis - the hot path. Every `GET /prices/{symbol}` will read from here.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: marketdata-redis
+    ports:
+      - "6379:6379"
+
+    # Persistence is switched OFF on purpose. Redis normally snapshots to disk ("save") or
+    # writes an append-only log ("appendonly"), both of which cost latency on the write path.
+    # plan.md section 3 accepts a volatile cache: if Redis restarts we lose the cached prices
+    # and rehydrate them from TimescaleDB, which is the durable source of truth. Trading a
+    # small startup cost for a faster steady state is the deliberate call here.
+    command: redis-server --save "" --appendonly no
+
+    # LEARN: a healthcheck is a command Docker runs repeatedly inside the container to decide
+    # whether the service is actually ready, not just started. Without it `docker compose ps`
+    # says "running" the instant the process launches - even while it is still booting - and
+    # your app connects too early and crashes. `redis-cli ping` replies PONG when Redis is live.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # TimescaleDB - durable tick history. Postgres with a time-series extension.
+  # ---------------------------------------------------------------------------
+  timescaledb:
+    # Pinned, not `latest`: a reviewer cloning this repo in six months gets the same database
+    # you tested against. `latest` silently changes underneath you.
+    image: timescale/timescaledb:2.18.2-pg17
+    container_name: marketdata-timescaledb
+
+    # HOST PORT 5434, not the usual 5432. Ports 5432 and 5433 on this machine are already
+    # taken by another project's Postgres container. The format is "host:container" - inside
+    # the Docker network it is still the standard 5432, only your machine sees it on 5434.
+    ports:
+      - "5434:5432"
+
+    environment:
+      POSTGRES_USER: marketdata
+      POSTGRES_PASSWORD: marketdata
+      POSTGRES_DB: marketdata
+
+    volumes:
+      # Named volume: the database files live here and survive `docker compose down`, so your
+      # tick history is not wiped every time you stop the stack.
+      - timescale_data:/var/lib/postgresql/data
+
+      # GOTCHA, and it will bite you at least once: the Postgres image runs every .sql file in
+      # this directory exactly ONCE - on the very first startup, when the data volume is empty.
+      # Editing 001_schema.sql later does nothing until you destroy the volume and start over:
+      #     docker compose down -v && docker compose up -d
+      # The -v flag is what deletes the volume. Without it, your schema change is ignored.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+
+    # `pg_isready` returns success only once Postgres accepts connections. The -U/-d flags
+    # matter: without them it checks the wrong default user and reports a false failure.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketdata -d marketdata"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  timescale_data:

@@ -1,0 +1,3 @@
+# Normalize line endings so the repo is identical for a reviewer on macOS or Linux.
+# Without this, Git rewrites files to CRLF on Windows and every clone shows phantom diffs.
+* text=auto eol=lf

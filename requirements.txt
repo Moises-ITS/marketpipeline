@@ -1,0 +1,16 @@
+# Step 1 dependencies. Versions are pinned so a reviewer's `pip install -r requirements.txt`
+# installs exactly what was tested. FastAPI, uvicorn and locust arrive in later build steps.
+
+# Redis client. The [hiredis] extra pulls in a C-based response parser - same API, noticeably
+# less CPU spent decoding replies on the hot read path.
+redis[hiredis]==6.4.0
+
+# PostgreSQL driver built for asyncio. Chosen over psycopg2 because psycopg2 is synchronous:
+# a query on it would block the entire event loop, which plan.md section 2 explicitly forbids.
+asyncpg==0.30.0
+
+# WebSocket client for the Coinbase feed.
+websockets==15.0.1
+
+# Loads .env into typed, validated settings objects instead of scattered os.environ lookups.
+pydantic-settings==2.11.0

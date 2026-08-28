@@ -1,0 +1,10 @@
+# Python virtual environment - large, machine-specific, always rebuilt from requirements.txt
+.venv/
+
+# Bytecode caches
+__pycache__/
+*.py[cod]
+
+# Real environment values. NEVER commit this: it is how API keys and database passwords leak
+# into public repos. Only .env.example is tracked.
+.env
