@@ -5,8 +5,12 @@
 # in containers means you never install Postgres or Redis on Windows directly, and a reviewer
 # can reproduce your exact setup with one command.
 #
-# The Python code does NOT run here yet. During development it runs on your machine in a venv
-# so edits take effect instantly. Containerizing the app is build-order step 11.
+# Four services: two datastores plus the two Python processes (ingest worker and API), so a
+# reviewer runs the whole system with `docker compose up -d --build` and nothing else.
+#
+# During development you will usually want the opposite: `docker compose up -d redis
+# timescaledb` for the infrastructure only, then run the Python on your machine in a venv so
+# edits take effect without a rebuild.
 
 services:
   # ---------------------------------------------------------------------------
@@ -74,6 +78,66 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Ingest worker - owns the Coinbase connection, writes both tiers.
+  # ---------------------------------------------------------------------------
+  ingest:
+    build: .
+    container_name: marketdata-ingest
+    command: python -m marketdata.ingest
+    environment:
+      # Inside the Docker network, services reach each other by SERVICE NAME on the container
+      # port - `timescaledb:5432`, not `localhost:5434`. The host port mapping above exists
+      # only for tools running on your machine. This is exactly the environment-not-code change
+      # config.py was written to make possible.
+      REDIS_URL: redis://redis:6379/0
+      PG_DSN: postgresql://marketdata:marketdata@timescaledb:5432/marketdata
+      SYMBOLS: ${SYMBOLS:-BTC-USD,ETH-USD,SOL-USD}
+
+    depends_on:
+      # `service_healthy` waits for the healthchecks above to pass, not merely for the
+      # container to exist. Without it the worker starts first, fails to connect, and dies.
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+
+    # The feed reconnects on its own, but the process itself can still die - out of memory, an
+    # unhandled error, a host reboot. Restarting it is the difference between a gap in history
+    # and the end of history. `unless-stopped` respects a deliberate `docker compose stop`.
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # API - the read path. http://localhost:8000/docs
+  # ---------------------------------------------------------------------------
+  api:
+    build: .
+    container_name: marketdata-api
+    command: uvicorn marketdata.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      PG_DSN: postgresql://marketdata:marketdata@timescaledb:5432/marketdata
+      SYMBOLS: ${SYMBOLS:-BTC-USD,ETH-USD,SOL-USD}
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+
+    # python -c rather than curl: the slim base image has no curl, and installing one just to
+    # answer a healthcheck adds a package (and a CVE surface) for a single HTTP GET.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    restart: unless-stopped
 
 volumes:
   timescale_data:

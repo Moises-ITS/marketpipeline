@@ -1,0 +1,12 @@
+# Everything the image does not need. A smaller build context means faster builds - and .venv
+# in particular holds Windows binaries that would be useless (and large) inside a Linux image.
+.venv/
+__pycache__/
+*.py[cod]
+.git/
+.env
+tests/
+loadtest/
+db/
+scripts/
+*.md
