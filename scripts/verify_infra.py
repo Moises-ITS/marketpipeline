@@ -1,11 +1,5 @@
 """Proves Redis and TimescaleDB are actually usable - not merely running.
 
-WHY BOTHER, when `docker compose ps` already says "healthy"?
-Because healthy only means the process answered a ping. It does not mean your credentials are
-right, the schema loaded, or the hypertable conversion ran. Without this script, a schema
-problem shows up hours later disguised as a mysterious ingestion bug. Verifying the foundation
-separately means that when something breaks later, you already know it is not the foundation.
-
 Run it any time the stack feels wrong:
     .venv\Scripts\python.exe scripts\verify_infra.py
 """
@@ -41,7 +35,7 @@ async def verify_redis() -> None:
 
     # LEARN: `redis.asyncio` is the async version of the client. Every call is awaited, meaning
     # that while Python waits on the network it hands control back to the event loop so other
-    # work continues. plan.md section 7 depends on this - the synchronous client would block.
+    # work continues.
     client = aioredis.from_url(settings.redis_url, decode_responses=True)
     try:
         t0 = time.perf_counter()

@@ -2,36 +2,26 @@
 
 WHAT THIS FILE IS FOR
 One question only: does real market data actually arrive, and what shape is it? Answering that
-in isolation - before any database is involved - means that when writes start failing in the
-next build step, you already know the feed itself is fine.
+in isolation
 
 MARKET DATA VOCABULARY
   tick     One record of something that happened in the market. Here, one completed trade.
+
   match    Coinbase's name for a completed trade: a buy order and a sell order met at a price.
-           This is distinct from a QUOTE, which is only an offer nobody has accepted yet.
+           
+  QUOTE    Only an offer nobody has accepted yet.
+
   side     Which trader was the AGGRESSOR - the one who accepted an existing offer instead of
            waiting for someone to come to them. 'buy' means a buyer paid the asking price.
+
   size     How much of the asset changed hands, in units of the first symbol. On BTC-USD,
            size 0.5 is half a Bitcoin.
+
   BTC-USD  A "product" or trading pair: the price of Bitcoin quoted in US dollars.
 
-WHY COINBASE AND NOT BINANCE
-plan.md originally proposed Binance. In testing, api.binance.com returns HTTP 451 from this
-machine - Binance geo-blocks US IP addresses. Coinbase serves the same trade-level data with
-no authentication and no VPN. A constraint worth knowing about before writing code against it.
-
-A WORD ON CLOCKS - this project measured it the hard way
+A WORD ON CLOCKS -
 The `lag` column below is computed as (our clock) - (exchange clock), so it is only as
-trustworthy as the worse of the two clocks. On the machine this was first run, lag came out
-NEGATIVE - about -320ms, implying trades arrived before they happened. The cause was not the
-feed: `w32tm /stripchart /computer:time.windows.com /samples:3` reported the local clock was
-332ms behind real time, because the Windows Time service was not running.
-
-This matters far beyond a cosmetic display bug. In real trading systems clock synchronization
-is a regulated requirement - EU MiFID II RTS 25 obliges high-frequency firms to keep clocks
-within 100 MICROseconds of UTC - precisely so that timestamps from different venues can be
-ordered against each other and a trade sequence can be reconstructed after the fact. A clock
-a third of a second out would make this data useless for that purpose.
+trustworthy as the worse of the two clocks.
 
 To fix it on Windows, in an ADMINISTRATOR terminal:
     net start w32time
@@ -39,9 +29,10 @@ To fix it on Windows, in an ADMINISTRATOR terminal:
 Then re-run and confirm lag reads positive.
 
 WHAT IS DELIBERATELY MISSING
-No reconnect logic, no backoff, no storage. If the connection drops this script simply exits.
-Reconnect-with-backoff is build-order step 2, and storage is step 3; adding them here would
-mix "does data arrive?" with "can we keep it?" and make a failure ambiguous.
+No reconnect logic, no backoff, no storage. The production version of this - which reconnects
+with backoff and writes to both storage tiers - is marketdata/feed.py plus marketdata/ingest.py.
+This file stays deliberately minimal so it remains a diagnostic: if it prints, the network,
+the exchange, and the parsing are all fine, and the problem is downstream.
 
 Run it:
     .venv\Scripts\python.exe -m marketdata.feed_smoke
@@ -56,37 +47,13 @@ from datetime import datetime, timezone
 from websockets.asyncio.client import connect
 
 from marketdata.config import settings
+# Normalization lives in feed.py, which the ingest worker uses too. Importing it here rather
+# than keeping a second copy means the smoke test and production parse a message identically -
+# if they drifted, this file would stop being evidence of anything.
+from marketdata.feed import parse_match
 
 # How often to print the throughput summary line.
 RATE_REPORT_SECONDS = 5.0
-
-
-def parse_match(msg: dict) -> dict | None:
-    """Turn one raw Coinbase message into our own tick shape, or None if it is not a trade.
-
-    LEARN: this is NORMALIZATION, and it is the reason the rest of the system stays simple.
-    Every exchange invents its own field names - Coinbase says `product_id`, Binance says `s`.
-    Converting to our own vocabulary at the single point where data enters the system means
-    adding a second exchange later touches only this function, not the database or the API.
-    """
-    if msg.get("type") not in ("match", "last_match"):
-        return None
-
-    return {
-        # Prices arrive as STRINGS ("77659.95"), not numbers. That is intentional on Coinbase's
-        # part: JSON numbers are floats, and parsing "0.1" into a float loses precision that
-        # you can never get back. Sending the exact decimal text lets each consumer decide.
-        # We convert to float here, matching the DOUBLE PRECISION column - see the tradeoff
-        # note in db/init/001_schema.sql for when that would be the wrong choice.
-        "price": float(msg["price"]),
-        "size": float(msg["size"]),
-        "symbol": msg["product_id"],
-        "side": msg.get("side"),
-        "trade_id": msg.get("trade_id"),
-        # Coinbase sends ISO-8601 UTC like "2026-08-28T19:04:11.123456Z". Python's fromisoformat
-        # rejected a trailing "Z" before 3.11, hence the replace - a common source of confusion.
-        "time": datetime.fromisoformat(msg["time"].replace("Z", "+00:00")),
-    }
 
 
 async def stream_trades() -> None:
@@ -137,7 +104,7 @@ async def stream_trades() -> None:
             # LATENCY: how stale the data already is by the time we see it - the network hop
             # from Coinbase's matching engine to this machine. It is the baseline that no
             # amount of downstream optimization can undo, so it is worth knowing before tuning.
-            #
+            
             # CAVEAT, and it is the important one: this subtracts the exchange's clock from
             # OUR clock. Two different machines, two different clocks. It measures real network
             # latency only if both are synchronized - see the clock section in the docstring.
