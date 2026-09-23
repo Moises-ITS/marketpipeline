@@ -16,8 +16,7 @@ Build a system that ingests a live market data feed, stores it across latency-ap
 
 **In scope (v1):**
 
-- Single exchange WebSocket feed (crypto — **Coinbase**, no auth friction) for N symbols (start with 3–5: BTC-USD, ETH-USD, SOL-USD)
-  - _Decided during step 1:_ Binance was the first candidate, but `api.binance.com` returns **HTTP 451** from a US IP — Binance geo-blocks US traffic, so it would need a VPN for every dev session. Binance.US is reachable but carries far fewer trades/sec, which weakens the load-test story. Coinbase serves the same trade-level data unauthenticated at ~10–50 ticks/sec across these three pairs.
+- Single exchange WebSocket feed (crypto — Binance or Coinbase, no auth friction) for N symbols (start with 3–5, e.g. BTC/USDT, ETH/USDT, SOL/USDT)
 - Async ingestion worker as its own process
 - Redis: hot cache (latest price), Streams (recent tick history), Pub/Sub (live fan-out)
 - TimescaleDB (Postgres extension): durable tick history, batched writes
@@ -41,6 +40,18 @@ Build a system that ingests a live market data feed, stores it across latency-ap
 - Threshold alerting (e.g., notify on >X% price move in Y seconds)
 
 ---
+
+Catch -> feed.py(holds live connection to Coinbase)
+Catch -> ingest.py(Runs the catching, hands ticks to storage)
+Keep -> store.py(Redis)
+Keep -> db.py(TimescaleDB - slow permenant record)
+Serve -> api.py(Answers questions over the web)
+Settings -> config.py(Settings)
+
+---
+Redis is kept in RAM, 0.2 milliseconds, doesn't survive a restart and holds last few thousand ticks
+
+TimescaleDB is kept in Disk, 10-15 milliseconds, does survive a restart and holds everything forever
 
 ## Architecture
 
