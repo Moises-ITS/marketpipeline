@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     max_history_limit: int = 5000
 
+    # Lower than the tick limit: 1000 one-minute candles is already 16 hours of chart. Wanting
+    # more than that means wanting a coarser interval, not a longer page.
+    max_candle_limit: int = 1000
+
     history_force_db: bool = False
 
     @field_validator("symbols", mode="before")

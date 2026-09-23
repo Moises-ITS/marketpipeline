@@ -108,11 +108,29 @@ Copy-Item .env.example .env
 |---|---|---|
 | `GET /prices/{symbol}` | Redis hash | The hot path. One `HGETALL`, nothing else. |
 | `GET /prices/{symbol}/history?window=1m&limit=500` | Streams, falling back to TimescaleDB | `window` accepts `30s`, `5m`, `2h`. The response's `source` field names the tier that answered. |
+| `GET /candles/{symbol}?interval=1m&window=1h&limit=500` | TimescaleDB continuous aggregate | OHLCV bars. `interval` is one of `1m`, `5m`, `15m`, `1h`, `1d`. |
 | `WS /stream/{symbol}` | Redis Pub/Sub | Pushes every tick for that symbol. One Redis subscription per symbol, fanned out to all connected clients. |
 | `GET /health` | both | Reports a round-trip time for each datastore. |
 
 Unknown symbols are rejected with a 404 rather than reaching Redis — otherwise a WebSocket
 client could subscribe to a channel nobody publishes to and hang forever with no error.
+
+Candles are not computed per request. `candles_1m` is a TimescaleDB continuous aggregate:
+Timescale keeps the one-minute buckets materialized and refreshes only the ones whose
+underlying ticks changed, so a read touches one precomputed row per minute instead of every
+trade inside it. Wider intervals roll up from those same buckets — `open` from the first
+minute, `close` from the last — which is why one materialized view answers all five intervals.
+
+Measured on 1.84M ticks:
+
+| Range | Aggregating raw `ticks` | Continuous aggregate |
+|---|---|---|
+| 1 hour | 9.5 ms | 0.40 ms |
+| 24 hours | 112 ms | 0.78 ms |
+
+The range matters more than the ratio: the raw query grew 12× between those two rows, the
+aggregate grew 2×. Reproduce with the `EXPLAIN (ANALYZE, TIMING OFF)` pair in
+[`phase2.md`](phase2.md).
 
 Interactive docs: <http://localhost:8000/docs>
 
