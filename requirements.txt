@@ -1,5 +1,6 @@
-# Step 1 dependencies. Versions are pinned so a reviewer's `pip install -r requirements.txt`
-# installs exactly what was tested. FastAPI, uvicorn and locust arrive in later build steps.
+# Runtime dependencies. Versions are pinned so a reviewer's `pip install -r requirements.txt`
+# installs exactly what was tested. Test and benchmark tools live in requirements-dev.txt so
+# the Docker image does not carry them.
 
 # Redis client. The [hiredis] extra pulls in a C-based response parser - same API, noticeably
 # less CPU spent decoding replies on the hot read path.
@@ -9,8 +10,16 @@ redis[hiredis]==6.4.0
 # a query on it would block the entire event loop, which plan.md section 2 explicitly forbids.
 asyncpg==0.30.0
 
-# WebSocket client for the Coinbase feed.
+# WebSocket client for the Coinbase feed - and, via uvicorn's [standard] extra below, the
+# server side of the /stream endpoint too.
 websockets==15.0.1
 
 # Loads .env into typed, validated settings objects instead of scattered os.environ lookups.
 pydantic-settings==2.11.0
+
+# The API itself. FastAPI is async-first and generates the OpenAPI docs at /docs for free.
+fastapi==0.141.1
+
+# ASGI server that actually runs the app. [standard] adds uvloop/httptools where available and
+# the websockets integration the /stream endpoint needs.
+uvicorn[standard]==0.52.4
