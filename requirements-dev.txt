@@ -1,0 +1,11 @@
+# Test and benchmark tooling. Not installed into the Docker image.
+-r requirements.txt
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+
+# Drives the API in tests via fastapi.testclient, including the WebSocket endpoint.
+httpx==0.28.1
+
+# Load generator behind loadtest/RESULTS.md.
+locust==2.46.4
