@@ -20,7 +20,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from marketdata import db, store
@@ -106,6 +106,17 @@ class Health(BaseModel):
     redis_ms: float | None = None
     timescaledb_ms: float | None = None
     detail: str | None = None
+
+
+def as_json(model: BaseModel) -> Response:
+    """Serialize an already-validated model once, in pydantic's Rust core, and send the bytes.
+
+    Returning the model itself makes FastAPI validate it a second time against response_model
+    and then serialize it in a separate pass. The model was validated when it was constructed,
+    so that second pass is pure CPU cost - and under load, CPU per request is what sets the p99
+    (loadtest/RESULTS.md, section 4). `response_model` stays on each route for the OpenAPI docs.
+    """
+    return Response(model.model_dump_json(), media_type="application/json")
 
 
 class Broadcaster:
@@ -214,7 +225,7 @@ app = FastAPI(
 
 
 @app.get("/health", response_model=Health)
-async def health() -> Health:
+async def health() -> Response:
     """Are both datastores actually reachable? Used by Docker's healthcheck, and by you.
 
     Timed with perf_counter, not the event loop's clock: on Windows loop.time() resolves to
@@ -232,18 +243,18 @@ async def health() -> Health:
         await app.state.pool.fetchval("SELECT 1")
         timings["timescaledb_ms"] = round((time.perf_counter() - start) * 1000, 2)
     except Exception as exc:
-        return Health(status="degraded", detail=f"{type(exc).__name__}: {exc}", **timings)
-    return Health(status="ok", **timings)
+        return as_json(Health(status="degraded", detail=f"{type(exc).__name__}: {exc}", **timings))
+    return as_json(Health(status="ok", **timings))
 
 
 @app.get("/prices/{symbol}", response_model=Tick)
-async def get_price(symbol: str) -> Tick:
+async def get_price(symbol: str) -> Response:
     """THE HOT PATH. One Redis HGETALL, nothing else - target sub-5ms p50 under load."""
     symbol = validate_symbol(symbol)
     tick = await store.get_latest(app.state.redis, symbol)
     if tick is None:
         raise HTTPException(404, f"no price cached for {symbol} yet - is the ingest worker running?")
-    return Tick(**tick)
+    return as_json(Tick(**tick))
 
 
 @app.get("/prices/{symbol}/history", response_model=History)
@@ -251,7 +262,7 @@ async def get_history(
     symbol: str,
     window: str = Query("1m", description="How far back to look: 30s, 5m, 2h"),
     limit: int = Query(500, ge=1),
-) -> History:
+) -> Response:
     """Recent history from Redis Streams, older history from TimescaleDB - automatically.
 
     The tier choice is made by the data, not by the caller: if the capped stream still reaches
@@ -266,10 +277,10 @@ async def get_history(
     if not settings.history_force_db:
         ticks = await store.read_recent(app.state.redis, symbol, int(since.timestamp() * 1000), limit)
         if ticks is not None:
-            return History(symbol=symbol, window=window, source="redis-stream", count=len(ticks), ticks=ticks)
+            return as_json(History(symbol=symbol, window=window, source="redis-stream", count=len(ticks), ticks=ticks))
 
     rows = await db.fetch_history(app.state.pool, symbol, since, limit)
-    return History(symbol=symbol, window=window, source="timescaledb", count=len(rows), ticks=rows)
+    return as_json(History(symbol=symbol, window=window, source="timescaledb", count=len(rows), ticks=rows))
 
 
 @app.get("/candles/{symbol}", response_model=Candles)

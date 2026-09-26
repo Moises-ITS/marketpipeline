@@ -1,0 +1,15 @@
+[2026-09-25 12:04:19,371] DESKTOP-RB4K30U/INFO/locust.main: Starting Locust 2.46.4
+[2026-09-25 12:04:19,563] DESKTOP-RB4K30U/INFO/locust.runners: DESKTOP-RB4K30U_3669ffcd94a9449ba7852736c912ac5e (index 0) reported as ready. 1 workers connected.
+[2026-09-25 12:04:19,579] DESKTOP-RB4K30U/INFO/locust.runners: DESKTOP-RB4K30U_30c1f4510f904b4d95eafc2f955819bc (index 1) reported as ready. 2 workers connected.
+[2026-09-25 12:04:19,706] DESKTOP-RB4K30U/INFO/locust.runners: DESKTOP-RB4K30U_cb27dff44d954127be55fe98ea7173bc (index 2) reported as ready. 3 workers connected.
+[2026-09-25 12:04:19,831] DESKTOP-RB4K30U/INFO/locust.runners: DESKTOP-RB4K30U_3988dc7fad0442239d458dc7362ba5de (index 3) reported as ready. 4 workers connected.
+[2026-09-25 12:04:20,391] DESKTOP-RB4K30U/INFO/locust.main: Run time limit set to 60 seconds
+[2026-09-25 12:04:20,392] DESKTOP-RB4K30U/INFO/locust.runners: Sending spawn jobs of 100 users at 20.00 spawn rate to 4 ready workers
+[2026-09-25 12:04:24,617] DESKTOP-RB4K30U/INFO/locust.runners: All users spawned: {"ReadUser": 100} (100 total users)
+[2026-09-25 12:05:20,398] DESKTOP-RB4K30U/INFO/locust.main: --run-time limit reached, shutting down
+[2026-09-25 12:05:20,552] DESKTOP-RB4K30U/INFO/locust.runners: Worker 'DESKTOP-RB4K30U_30c1f4510f904b4d95eafc2f955819bc' (index 1) quit. 0 workers ready.
+[2026-09-25 12:05:20,554] DESKTOP-RB4K30U/INFO/locust.runners: Worker 'DESKTOP-RB4K30U_3988dc7fad0442239d458dc7362ba5de' (index 3) quit. 0 workers ready.
+[2026-09-25 12:05:20,560] DESKTOP-RB4K30U/INFO/locust.runners: Worker 'DESKTOP-RB4K30U_3669ffcd94a9449ba7852736c912ac5e' (index 0) quit. 0 workers ready.
+[2026-09-25 12:05:20,562] DESKTOP-RB4K30U/INFO/locust.runners: Worker 'DESKTOP-RB4K30U_cb27dff44d954127be55fe98ea7173bc' (index 2) quit. 0 workers ready.
+[2026-09-25 12:05:20,563] DESKTOP-RB4K30U/INFO/locust.runners: The last worker quit, stopping test.
+[2026-09-25 12:05:21,418] DESKTOP-RB4K30U/INFO/locust.main: Shutting down (exit code 0)

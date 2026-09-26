@@ -114,7 +114,9 @@ services:
   api:
     build: .
     container_name: marketdata-api
-    command: uvicorn marketdata.api:app --host 0.0.0.0 --port 8000
+    # 8 workers: the API is stateless, so processes are interchangeable (loadtest/RESULTS.md,
+    # sections 2 and 4). No access log: one log line per request is measurable CPU at thousands of req/s.
+    command: uvicorn marketdata.api:app --host 0.0.0.0 --port 8000 --workers 8 --no-access-log
     ports:
       - "8000:8000"
     environment:

@@ -175,6 +175,68 @@ all three rows are here instead of just the flattering one.
 
 ---
 
+## 4. Pushing throughput: 1,836 → 4,187 req/s
+
+Re-measured on 2026-09-25, one change at a time, each compared with a baseline taken the same
+day rather than the numbers above (the same 4-worker setup as section 2 measured 1,836 req/s
+that day, against 2,351 the week before — which is why no step is compared across days).
+
+| Step | Change | Users | Aggregate req/s | Avg | p50 | p99 |
+|---|---|---|---|---|---|---|
+| 0 | Baseline: section 2 setup, 4 workers on the Windows host | 100 | 1,836 | 9.8 ms | 6 ms | 39 ms |
+| 1a | Locust `FastHttpUser` instead of `HttpUser` | 100 | 2,479 | 7.5 ms | 5 ms | 25 ms |
+| 1b | 200 users | 200 | 2,858 | 37.0 ms | 31 ms | 100 ms |
+| 2 | API in its Linux container (uvloop + httptools), no access log | 200 | 3,659 | 22.3 ms | 19 ms | 72 ms |
+| 3 | 6 API workers | 200 | 4,104 | 16.5 ms | 12 ms | 76 ms |
+| 4 | Serialize each response once (`as_json` in `api.py`) | 200 | 4,107 | 16.5 ms | 13 ms | 67 ms |
+| 5 | 8 API workers | 200 | **4,187** | **15.5 ms** | 12 ms | **64 ms** |
+
+Raw CSVs: `loadtest/results/s*_after_stats.csv`. Steps 2 onward use
+`run_benchmark.ps1 -UseRunningApi` against `docker compose up -d`.
+
+What each step showed:
+
+- **1a — the client was a bottleneck again.** `HttpUser` is built on `requests`, which is slow
+  per request. Swapping the client alone raised throughput 35% with the API unchanged.
+- **1b — 100 users could not ask for more.** By Little's law, 100 users with a ~30 ms average
+  think time can offer at most ~2,600 req/s however fast the API is. Doubling users removed
+  that ceiling and exposed the API as the limit again: p99 jumped to 100 ms.
+- **2 — Windows was costing ~28%.** uvicorn's fast event loop (uvloop) and HTTP parser
+  (httptools) do not exist on Windows, so the host-run API never had them. The container does.
+- **3–5 — the rest is CPU contention.** The p99 tail is spread evenly across all three
+  endpoints rather than owned by one slow query, which is the signature of requests queueing
+  for a core. Serializing once removed a redundant validation pass (p99 76 → 67 ms); more
+  workers helped only marginally, because the API, four Locust processes, Redis, TimescaleDB
+  and Docker all share six physical cores.
+
+**At the same 200-user load, steps 2–5 cut average response time 58% (37.0 → 15.5 ms), cut p99
+36% (100 → 64 ms) and raised throughput 47%.**
+
+### Where does p99 cross 50 ms?
+
+Same setup as step 5 (8 workers, Linux container), fewer users, repeated because single runs
+turned out to vary by several hundred req/s and 20+ ms of p99:
+
+| Users | Run | Aggregate req/s | Avg | p50 | p99 |
+|---|---|---|---|---|---|
+| 160 | 1 | 3,997 | 8.4 ms | 6 ms | 46 ms |
+| 160 | 2 | 3,850 | 9.9 ms | 7 ms | 49 ms |
+| 160 | 3 | 3,864 | 9.8 ms | 7 ms | 51 ms |
+| 180 | 1 | 4,346 | 9.7 ms | 7 ms | 47 ms |
+| 180 | 2 | 3,888 | 14.2 ms | 10 ms | 70 ms |
+
+**160 users is the reproducible operating point: 3,850–3,997 req/s at a 46–51 ms p99** across
+three runs. 180 users produced the best single run and also one of the
+worst, which is why neither 180-user number is the headline — a single lucky run is not a
+result.
+
+**Not reached: a sub-50 ms p99 at 4,000 req/s on this machine.** A fixed-arrival-rate run
+(Locust `constant_throughput`, exactly 4,000 req/s offered) gave the same ~65 ms p99, so it is
+not an artefact of the closed-loop test. The remaining levers are moving the load generator to
+a second machine, or an in-process price cache that takes Redis off the hot path.
+
+---
+
 ## Reproducing this
 
 ```powershell

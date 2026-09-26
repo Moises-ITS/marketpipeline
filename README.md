@@ -144,6 +144,8 @@ Full methodology, including a failed measurement and an unexplained result, is i
 | 20 users, 1 API worker | **3 ms** | 5 ms | 7 ms | 494 |
 | 100 users, 1 API worker | 24 ms | 38 ms | 56 ms | 1,511 |
 | 100 users, 4 API workers | **5 ms** | 12 ms | 19 ms | **2,351** |
+| 160 users, 8 workers, Linux container (run 3 of 3) | 5 ms | 22 ms | 42 ms | **3,864** |
+| 200 users, 8 workers, Linux container ([§4](loadtest/RESULTS.md#4-pushing-throughput-1836--4187-reqs)) | **10 ms** | 30 ms | 56 ms | **4,187** |
 
 Three things the measurements changed:
 

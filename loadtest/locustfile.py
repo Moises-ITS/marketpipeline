@@ -20,12 +20,15 @@ the API started with HISTORY_FORCE_DB=true and then false.
 
 import random
 
-from locust import HttpUser, between, tag, task
+from locust import between, tag, task
+from locust.contrib.fasthttp import FastHttpUser
 
 SYMBOLS = ["BTC-USD", "ETH-USD", "SOL-USD"]
 
 
-class ReadUser(HttpUser):
+# FastHttpUser (geventhttpclient) instead of HttpUser (requests): several times more requests per
+# CPU core, so the load generator stops competing with the API for the same six cores.
+class ReadUser(FastHttpUser):
     # A tiny think-time. Zero would measure how fast Locust itself can spin, not how the API
     # behaves under a realistic arrival pattern.
     wait_time = between(0.01, 0.05)

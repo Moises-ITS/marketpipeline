@@ -25,6 +25,10 @@ param(
     [string]$Tags = "",
     [string[]]$Phases = @("before", "after"),
     [switch]$Reverse,
+    # Benchmark the API that is already running (the Docker container) instead of starting one
+    # on the Windows host. The container is Linux, so uvicorn gets uvloop and httptools there,
+    # neither of which exists on Windows.
+    [switch]$UseRunningApi,
     [string]$Label = "",
     [string]$ApiHost = "http://localhost:8000"
 )
@@ -49,9 +53,12 @@ function Invoke-Phase {
     # process serves this load. Extra workers would hide a blocking call behind parallelism.
     $apiArgs = @("-m", "uvicorn", "marketdata.api:app", "--port", "8000", "--log-level", "warning")
     if ($UvicornWorkers -gt 1) { $apiArgs += @("--workers", "$UvicornWorkers") }
+    $api = $null
+    if (-not $UseRunningApi) {
     $api = Start-Process -FilePath $python -ArgumentList $apiArgs -PassThru -NoNewWindow `
         -RedirectStandardOutput "$env:TEMP\bench_api_out.txt" -RedirectStandardError "$env:TEMP\bench_api_err.txt"
     Start-Sleep -Seconds 10
+    }
 
     # Confirm which tier is actually answering before spending a minute measuring it.
     $source = (Invoke-WebRequest "$ApiHost/prices/BTC-USD/history?window=30s&limit=5" -UseBasicParsing | ConvertFrom-Json).source
@@ -75,7 +82,7 @@ function Invoke-Phase {
     # the real interpreter as a child, so Stop-Process on the launcher alone can leave the
     # actual server running - and holding port 8000 against the next phase.
     foreach ($p in $workerProcs) { taskkill /T /F /PID $p.Id 2>$null | Out-Null }
-    taskkill /T /F /PID $api.Id 2>$null | Out-Null
+    if ($api) { taskkill /T /F /PID $api.Id 2>$null | Out-Null }
     Start-Sleep -Seconds 3
 }
 
